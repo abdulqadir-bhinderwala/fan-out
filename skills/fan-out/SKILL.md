@@ -22,7 +22,7 @@ Parse the argument into: (1) the **work** and (2) any **setup overrides** in nat
 | Role | Who | Does | Never |
 |---|---|---|---|
 | **Controller** | You (main session) | Decompose, spawn/steer lanes, gate reviews, integrate, keep ledger | Write feature code (stay free to coordinate) |
-| **Lane** | Spawned subagent, named by domain (`api-lane`, `ui-lane`, `spa-lane`, `infra-lane`, `domain-lane`) | Build one task in **its own files**, TDD, commit, self-review, report | Touch another lane's files; approve itself |
+| **Lane** | Spawned subagent, named by domain (`api-lane`, `ui-lane`, `spa-lane`, `infra-lane`, `domain-lane`) | Build one task in **its own files**, TDD, commit, self-review, report. If the task is large + disjoint, **sub-fan-out** its own worker sub-agents (see *Recursive fan-out*) | Touch another lane's files; approve itself |
 | **Reviewer** | Spawned subagent, fresh-per-task or persistent-reused | Read diff adversarially, verify spec + security, return verdict | Write code; rubber-stamp |
 
 Your leverage is **curating context**: each agent gets a hand-built brief *file*, not session history.
@@ -36,7 +36,7 @@ Your leverage is **curating context**: each agent gets a hand-built brief *file*
 3. **Branch.** Record the base commit. Seed the ledger (`.superpowers/sdd/progress.md`).
 4. **Decompose into waves** (see below).
 5. **Viewer:** detect best available multiplexer → set up panes; else headless (see below).
-6. **Dispatch a wave** of lanes in parallel — named, brief-file-driven, model-tiered.
+6. **Dispatch a wave** of lanes in parallel — named, brief-file-driven, model-tiered. **Grant capable lanes permission to sub-fan-out** when their task is large and internally disjoint (see *Recursive fan-out*).
 7. **Per task gate:** lane reports → **you verify the actual diff** → fresh reviewer (adversarial) → fix loop if Critical/Important → **bank in ledger + commit stands**.
 8. **Sequence** cross-deps at gates; release parallel tasks where files are disjoint.
 9. **Kill** each lane at completion; audit for zombies between phases.
@@ -60,6 +60,21 @@ Your leverage is **curating context**: each agent gets a hand-built brief *file*
 - **Reuse** an idle existing lane by **messaging it by name** (SendMessage) with its next brief — do NOT spawn a duplicate. `api-lane-2` while `api-lane` lives = two agents in one tree = file races.
 - **Kill** every agent when its work is done — **actually stop it** (TaskStop), don't just message "stand down." A stand-down message leaves the process alive as a zombie that auto-picks-up tasks and collides. Kill at each lane's completion and at program end; periodically audit for zombies.
 - **One persistent reviewer** is the exception worth reusing across tasks (accumulates review context) — still kill it at program end.
+
+## Recursive fan-out — lanes may spawn their own sub-lanes
+
+When a lane's task is itself **large and internally decomposable** (many disjoint files / independent sub-parts), let the lane act as a **sub-controller**: it splits its task into sub-briefs, spawns its own worker sub-agents in parallel (the Agent tool), gates + integrates them, then reports up. **Recurse wherever the sub-graph is wide** — it's the main lever for going faster on big tasks. A lane doesn't recurse unless you grant it.
+
+Put the grant + guardrails in the lane's brief/prompt when you enable it:
+
+- **Enable explicitly.** In the dispatch, say: *"You MAY spawn your own sub-agents if your task decomposes into disjoint parallel pieces; you then act as their controller — verify each sub-diff, kill them when done, report the integrated result."* Prefer this **wherever it buys real parallelism**.
+- **Same disjoint-files rule, one level down.** The lane partitions *its own* file boundary among sub-lanes; two sub-lanes never touch the same file. The lane owns integration + any shared file (its package's index/lockfile).
+- **A sub-controller runs the same gates:** it verifies each sub-agent's actual diff, reviews risky sub-diffs adversarially, and does **not** pass unverified sub-work upward. Skipping its own gates is as unsafe as a controller skipping them.
+- **Depth cap: 2 levels by default** (controller → lane → sub-lane). Go to 3 only when a sub-task is itself clearly wide. **Never recurse on a dependency chain** (deep, not wide) — that adds coordination cost, not speed.
+- **Shared budget.** The concurrent-agent cap is shared across the whole tree; every live agent is cost + collision risk. Prefer a few well-scoped sub-lanes over many tiny ones. Kill sub-lanes at their completion (zombie audits apply at every level).
+- **Report contract unchanged upward:** the lane returns one report (files, test output, sub-review verdicts) as if it did the work itself — you gate the lane's integrated result, not each leaf agent.
+
+Rule of thumb: **recurse where the sub-graph is wide, build inline where it's small.** Lane with 5 disjoint files → sub-fan-out. Lane with one file → just build it.
 
 ## Review gates — why swarms stay correct
 
@@ -105,7 +120,7 @@ Pane recipe (any multiplexer): one window, three regions, controller widest (~70
 ## Safety invariants (never traded for speed)
 
 - Never trust "done" — verify the diff. Never skip the review gate on an auth/money/data-integrity surface.
-- Never run two agents in the same file/working-tree concurrently.
+- Never run two agents in the same file/working-tree concurrently — **at any level.** Recursion follows the same rules everywhere: disjoint files, verify-the-diff, kill-when-done, depth cap.
 - Never fake a human gate — sign-offs (spec approval, UAT, launch) are recorded when the human relays them, never self-approved.
 - Never lose the paper trail (ledger + git + committed specs/plans).
 - Adversarial review for authorization. Fail closed (guards deny on missing context; prefer 4xx over silent success).

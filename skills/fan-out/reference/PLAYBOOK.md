@@ -101,6 +101,19 @@ Rules of thumb:
 - Before spawning, ask: does a lane of this role already exist and idle? If yes, message it.
 - After a phase: list agents, kill everything not needed for the next phase.
 
+### Recursive fan-out — a lane that becomes a sub-controller
+
+A lane isn't limited to building solo. When you hand it a task that is itself **wide** (many disjoint files / independent sub-parts), grant it permission to **spawn its own worker sub-agents** and act as their controller. This is the primary way to go faster on a large task: instead of one lane grinding through 6 files serially, it fans out 6 sub-lanes, gates them, and integrates. Do it **wherever it buys real parallelism.**
+
+How to enable it (all of this goes in the lane's dispatch/brief):
+- **Say so explicitly** — a lane recurses only when told: *"You MAY spawn sub-agents via the Agent tool if your task decomposes into disjoint parallel pieces; you become their controller."*
+- **The lane inherits the full controller contract, one level down:** partition its own file boundary among sub-lanes (never two on the same file), own integration + the shared package index/lockfile, write sub-briefs as files, **verify every sub-diff**, adversarially review the risky ones, and **kill sub-lanes when done** (zombie audits apply at every level).
+- **Depth cap 2 by default** (controller → lane → sub-lane); 3 only when a sub-task is itself clearly wide. **Never recurse down a dependency chain** — deep ≠ wide; that's coordination cost, not speed.
+- **Shared caps:** the concurrent-agent limit and token budget are shared across the whole tree. Prefer a few well-scoped sub-lanes to a swarm of tiny ones.
+- **The report rolls up:** the lane returns one integrated report (files, tests, sub-review verdicts). You gate the lane's result as a unit — you don't manage its leaf agents.
+
+Rule of thumb: **recurse where the sub-graph is wide, build inline where it's small.** For very large deterministic fan-outs, a Workflow script (loops/conditionals/fan-out in code) beats hand-dispatching sub-lanes.
+
 ---
 
 ## 5. The review gates — why swarms stay correct
