@@ -6,6 +6,20 @@ Works with or without `tmux`. Cross-platform: macOS, Linux, Windows.
 
 ---
 
+## Set it up (paste the link, tell your agent)
+
+Paste this repo's link to your coding agent and say **"set this up"**. The agent reads [`AGENTS.md`](AGENTS.md) and installs the skill for you — no manual steps.
+
+Prefer a one-liner yourself? This clones and installs in one shot (swap in this repo's git URL):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/<you>/fan-out/main/install.sh | bash -s -- --repo https://github.com/<you>/fan-out.git
+```
+
+Then start a **new** Claude Code session and run `/fan-out <task>`. (Skills load at session start.)
+
+---
+
 ## What it does
 
 You type:
