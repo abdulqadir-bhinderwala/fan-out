@@ -13,7 +13,7 @@ Paste this repo's link to your coding agent and say **"set this up"**. The agent
 Prefer a one-liner yourself? This clones and installs in one shot (swap in this repo's git URL):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/<you>/fan-out/main/install.sh | bash -s -- --repo https://github.com/<you>/fan-out.git
+curl -fsSL https://raw.githubusercontent.com/abdulqadir-bhinderwala/fan-out/main/install.sh | bash -s -- --repo https://github.com/abdulqadir-bhinderwala/fan-out.git
 ```
 
 Then start a **new** Claude Code session and run `/fan-out <task>`. (Skills load at session start.)
@@ -47,7 +47,7 @@ This is a **plain skills repo** — clone it and drop the `fan-out` folder into 
 ### Quick install (script)
 
 ```bash
-git clone https://github.com/<you>/fan-out.git
+git clone https://github.com/abdulqadir-bhinderwala/fan-out.git
 cd fan-out
 ./install.sh          # copies skills/fan-out into ~/.claude/skills/
 ```
@@ -55,7 +55,7 @@ cd fan-out
 ### Manual install
 
 ```bash
-git clone https://github.com/<you>/fan-out.git
+git clone https://github.com/abdulqadir-bhinderwala/fan-out.git
 cp -r fan-out/skills/fan-out ~/.claude/skills/fan-out
 ```
 
@@ -70,7 +70,7 @@ ln -s "$(pwd)/fan-out/skills/fan-out" ~/.claude/skills/fan-out
 ### Windows (PowerShell)
 
 ```powershell
-git clone https://github.com/<you>/fan-out.git
+git clone https://github.com/abdulqadir-bhinderwala/fan-out.git
 Copy-Item -Recurse fan-out\skills\fan-out "$env:USERPROFILE\.claude\skills\fan-out"
 ```
 
