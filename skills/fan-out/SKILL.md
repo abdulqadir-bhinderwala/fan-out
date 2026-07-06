@@ -124,4 +124,5 @@ Pane recipe (any multiplexer): one window, three regions, controller widest (~70
 - Never fake a human gate — sign-offs (spec approval, UAT, launch) are recorded when the human relays them, never self-approved.
 - Never lose the paper trail (ledger + git + committed specs/plans).
 - Adversarial review for authorization. Fail closed (guards deny on missing context; prefer 4xx over silent success).
+- **No spawned agent runs a destructive command without team-lead (controller) review** — at any level. Lanes and sub-lanes build, test, and commit their own files; anything that can lose work or state (`git reset --hard`, `git push -f`, branch/tag deletes, `rm -rf`, dropping DB tables / migrations down, truncate, overwriting untracked files, killing shared processes, force-installing over a lockfile) is **proposed up to the controller, not executed**. The controller reviews, takes a backup first (branch/stash), and either runs it or relays it to the human. Put this limit in every lane/sub-lane brief. Sub-controllers enforce it on their own sub-lanes.
 - Destructive ops get a backup first (branch/stash) and are surfaced, not done silently.

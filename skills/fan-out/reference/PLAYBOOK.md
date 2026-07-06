@@ -196,6 +196,7 @@ Conversation memory does not survive compaction; a controller that loses its pla
 - **Never lose the paper trail.** Ledger + git + committed specs/plans.
 - **Adversarial review for authorization.** Prompt reviewers to attack the design, not just check the happy path.
 - **Fail closed.** Guards deny on missing context; fixes prefer 4xx over silent success.
+- **No spawned agent runs a destructive command without team-lead review — at any level.** Lanes and sub-lanes build, test, and commit their own files. Anything that can lose work or state — `git reset --hard`, `git push -f`, branch/tag deletes, `rm -rf`, `git clean -fdx`, dropping DB tables / migrating down, `TRUNCATE`, overwriting untracked files, killing shared processes, force-installing over a lockfile — is **proposed up to the controller, never executed by the worker**. The controller backs up first (branch/stash), then runs it or relays it to the human. State this limit in every lane/sub-lane brief; a sub-controller enforces it on its own sub-lanes.
 - **Destructive ops get a backup first** (branch/stash) and are surfaced, not done silently.
 
 ---
