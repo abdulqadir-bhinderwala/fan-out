@@ -146,3 +146,88 @@ Pane recipe (any multiplexer): one window, three regions, controller widest (~70
 - Adversarial review for authorization. Fail closed (guards deny on missing context; prefer 4xx over silent success).
 - **No spawned agent runs a destructive command without team-lead (controller) review** — at any level. Lanes and sub-lanes build, test, and commit their own files; anything that can lose work or state (`git reset --hard`, `git push -f`, branch/tag deletes, `rm -rf`, dropping DB tables / migrations down, truncate, overwriting untracked files, killing shared processes, force-installing over a lockfile) is **proposed up to the controller, not executed**. The controller reviews, takes a backup first (branch/stash), and either runs it or relays it to the human. Put this limit in every lane/sub-lane brief. Sub-controllers enforce it on their own sub-lanes.
 - Destructive ops get a backup first (branch/stash) and are surfaced, not done silently.
+
+## Field lessons — earned, not theorised
+
+Each of these cost real time on a real programme. They are ordered by how often they recur.
+
+### Verify in the world, never in the runner
+
+A tool reporting success is evidence that **everything the tool could see** succeeded — not that your
+change landed. Ask the system what exists.
+
+- A migration runner reported *"up to date — verified 22 migrations"* and applied **nothing**: it ran
+  from a built image, not the working tree. Count the ledger; look for the object.
+- A container was three days stale while its health check was green. Every route 404'd against source
+  that was committed and correct. **Probe the endpoint, don't read the code.**
+- Rebuilding ONE service silently applied a lane's uncommitted migration to the owner's live database —
+  `depends_on: migrate` ran the whole chain. **Check for uncommitted migrations before any rebuild.**
+
+### A green suite is not a working product
+
+Reserve real suspicion for the gap between "tests pass" and "it works".
+
+- **jsdom has no layout engine.** Five layout defects shipped green: a page cap 48px short of its own
+  breakpoint, a missing `mx-auto` leaving 656px dead, a 1px-wide table column, a crashed route, a
+  stranded panel. **Measure in a real browser.** Report the numbers, not "looks right".
+- **A mocked client cannot see a contract the mock does not honour.** Four defects shipped because the
+  mock answered more agreeably than the server: a `200` with an empty body that the client tried to
+  parse (every successful save reported failure), a `.strict()` rejection the mock never performed
+  (**every save was a silent no-op**), an uncontracted response shape. **Walk each route a user's data
+  passes through ONCE against the running system before the phase closes.** All four surfaced in a
+  single save→leave→return loop.
+- **A test can assert the right thing about the wrong scenario.** A lane's absent-vs-empty test
+  survived the backwards mutation because nothing in the suite ever reached the state it described.
+- **Mutation-check anything load-bearing, and confirm the tests EXECUTED** — not merely that they were
+  red. A mutation that only breaks compilation proves nothing; a malformed mutation that changes no
+  behaviour reports SURVIVED, indistinguishable from a real survival.
+- **A killed mutation run is an unknown state, not a no-op.** A timeout left the mutation LIVE in the
+  tree because the restore sat in a `finally` that never ran. **Diff against a known-good copy before
+  committing after any interrupted run.**
+
+### Managing lanes
+
+- **Commit per completed piece, never once at the end.** A lane lost two hours to an API crash with
+  everything uncommitted. The brief survived; the work did not.
+- **State lives in files.** When a lane dies, its approved design must be recoverable — fold the plan
+  into the brief and commit it, so a replacement inherits the thinking rather than re-deriving it.
+- **A lane that reports idle without starting, twice, gets replaced — not prodded.** Re-sending costs
+  a round trip each time and the outcome does not change.
+- **Kill lanes when done, and audit for zombies.** A crashed lane still showed as running hours later;
+  two more survived a context compaction unnoticed. Enumerate live agents periodically.
+- **If the human is using the app, the working tree IS the running application.** Dev servers serve it.
+  A half-finished rename put a stack trace in front of the owner. Order edits so the tree always
+  compiles: add the new shape, migrate references, remove the old one. **Never remove first.**
+
+### Controller discipline
+
+The controller's failures are the expensive ones, because everything downstream inherits them.
+
+- **Never write an id, a filename or a test name you have not looked at.** Fabricated two issue ids in
+  one session by trusting a create command's output that never printed them — the exact failure being
+  corrected in lanes at the time.
+- **Re-check `git log` before accusing a lane of idling.** Messages cross. A stale snapshot produced an
+  unfair correction that had to be retracted.
+- **Reports go stale the moment they are written.** Lanes repeatedly inherited claims from each other's
+  reports that were true when written and false when read — an unapplied migration, a missing route.
+  Route the *finding*, and re-verify the *state*.
+- **Ambiguity flagged by a lane is worth more than code.** Lanes that stopped to ask — a rule they
+  believed wrong, a mirror they could not avoid, a gate change outside their brief — each surfaced a
+  real defect. **Reward flagging; never punish it with more scope.**
+- **When a lane refuses on principle, check the principle before overriding.** One refused its task
+  arguing the rule was wrong. It was right; the task was reverted.
+
+### Patterns worth naming across a programme
+
+When the same defect appears three times, stop filing bugs and name the habit:
+
+- **A rule enforced on the READ side and absent on the WRITE side.** Three instances in one phase: an
+  offer that checked a column the create gate did not, a value displayed but not enforced, an account
+  type offered only under a condition the POST accepted without. **When a rule is added to a read
+  route, ask which write route must also refuse it.**
+- **Two layers each holding a default disagree silently.** A client restating a server default hid the
+  owner's configured value. Constants belong in the one package both sides already share.
+- **An ORM defeats a column-level GRANT by naming every column** — and `.returning()` silently requires
+  SELECT on a table that deliberately grants none. **Fix the call; never widen the grant.** Widening
+  makes the symptom vanish and dissolves the protection.
+- **Two permissive RLS policies are one gate with the union of both openings.**
