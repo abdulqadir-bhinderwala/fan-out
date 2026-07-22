@@ -12,9 +12,9 @@
 /fan-out <task or BRD/spec path or description> [optional swarm setup]
 ```
 
-- **`/fan-out add rate-limiting to the login endpoint`** — one small task. Controller does it directly or with 1 lane + 1 reviewer.
-- **`/fan-out build the reporting module per docs/specs/reporting.md`** — a feature. Controller plans it, fans out lanes by file-boundary, reviews each.
-- **`/fan-out ship the whole BRD at docs/BRD.docx`** — a program. Controller decomposes into sub-projects → each gets brainstorm → spec → plan → parallel build → review → finish.
+- **`/fan-out add rate-limiting to the login endpoint`** — one small task. Controller branches, **spawns the `skeptic`** (every run, no exceptions), then does it directly or with 1 lane + 1 reviewer.
+- **`/fan-out build the reporting module per docs/specs/reporting.md`** — a feature. Controller plans it, fans out lanes by file-boundary, gates each through reviewer + `skeptic`.
+- **`/fan-out ship the whole BRD at docs/BRD.docx`** — a program. Controller decomposes into sub-projects → each gets brainstorm → spec → plan → plan gate → parallel build → review + `skeptic` → finish.
 - **Optional setup** (natural language): `... with 3 backend lanes and a security reviewer`, `... no tmux`, `... cheapest models`, `... don't touch the payments module`, `... run to completion, don't check in`.
 
 **Default intelligence:** the controller decides lane count, model tiers, review depth, and tmux vs no-tmux from the task itself. You only pass setup when you want to override.
@@ -25,13 +25,16 @@
 
 Most AI coding is one agent doing one thing at a time. A swarm wins when work is **decomposable** and **file-disjoint**: independent pieces built in parallel by focused agents, each with exactly the context it needs, each verified before it's trusted.
 
-Three roles, always:
+Four roles, always:
 
 | Role | Who | Does | Never |
 |---|---|---|---|
 | **Controller** (team-lead) | The main session (you) | Decompose, spawn/steer lanes, gate reviews, integrate, keep the ledger | Write feature code itself (it stays free to coordinate) |
 | **Lane** (implementer) | A spawned subagent, named by domain (`api-lane`, `ui-lane`, `spa-lane`, `infra-lane`, `domain-lane`) | Build one task at a time in **its own files**, TDD, commit, self-review, report | Touch another lane's files; approve its own work |
 | **Reviewer** | A spawned subagent, fresh per task or persistent-reused | Read the diff adversarially, verify spec + security, return a verdict | Write code; rubber-stamp |
+| **Skeptic** | One persistent subagent named `skeptic`, spawned at branch time before any dispatch, killed at program end | Attack the plan before dispatch, audit skill compliance, dispute every claim of done — blocking only on evidence | Write code; block without evidence; be spawned twice |
+
+**Skeptic is not a second reviewer.** The reviewer is fresh per task and reads one diff for correctness and security — it has no memory and no view of the plan. The skeptic is persistent, and goes at **claims, process, and plan shape** across the whole program: it attacks the decomposition before any lane spawns, it asks whether the process skills were actually followed rather than claimed, and a lane that overstated "done" in task 2 gets sharper scrutiny in task 7. That accumulated memory is precisely what a fresh-per-task reviewer structurally cannot have, and it is why this is a distinct role rather than a longer reviewer prompt.
 
 The controller's leverage is **curating context**: each lane/reviewer gets a hand-built brief (a file), not the session history. This keeps every agent focused and keeps the controller's own context clean.
 
@@ -40,25 +43,52 @@ The controller's leverage is **curating context**: each lane/reviewer gets a han
 ## 2. The lifecycle (scales from 1 task to a BRD)
 
 ```
-                 ┌─────────────── one small task ───────────────┐
-INPUT ─► triage ─┤                                              ├─► DONE
-                 └─ feature / BRD ─► brainstorm ─► spec ─► plan ─┘
-                                       │            │        │
-                                (design gate)  (write gate)  │
-                                                              ▼
-                                                    EXECUTE (fan-out waves)
-                                                              │
-                                                     per-task review gate
-                                                              │
-                                                    whole-branch review
-                                                              │
-                                                     finish branch (merge/PR)
+INPUT
+  │
+  ▼
+triage ──┬── small task ──────────────┐
+         │                            │
+         └── feature/BRD              │
+              │                       │
+              ▼                       │
+      brainstorm (design gate)        │
+              │                       │
+              ▼                       │
+      spec ──► plan (write gate)      │
+              │                       │
+              ├───────────────────────┘
+              ▼
+      branch + spawn skeptic   (every run, no exceptions)
+              │
+              ├── feature/BRD only ──► decompose into waves
+              │                                │
+              │                                ▼
+              │                        plan gate (skeptic)
+              │                                │
+              ├────────────────────────────────┘
+              ▼
+      viewer setup (headless if no multiplexer)
+              │
+              ▼
+      EXECUTE (dispatch wave)
+              │
+              ▼
+      per-task gate: verify diff ─► reviewer ─► skeptic
+              │
+              ▼
+      whole-branch review + skeptic final pass
+              │
+              ▼
+      finish branch (merge/PR) ─► kill the skeptic
+              │
+              ▼
+      report (incl. every OVERRIDE line)
 ```
 
-- **Small task** → skip straight to a single lane + reviewer (or the controller does it).
+- **Small task** → single lane + reviewer (or the controller does it) — but it still **branches and spawns the `skeptic` first** (no triage exception for size); it then jumps straight to dispatch, skipping only wave decomposition and the plan gate — it still gets viewer setup before dispatch. The per-task review gate (skeptic disputes the done-claim) and the whole-branch/skeptic final pass still apply.
 - **Feature / BRD** → run the full chain. For a BRD too big for one spec, **decompose into sub-projects first** (independent pieces + build order), then run each sub-project through the chain. This is the `brainstorm → writing-plans → subagent-driven-development` flow.
 
-**Gate discipline:** each stage produces an artifact and only advances when its gate passes. Design gate = user/PO approves the spec. Write gate = plan self-review clean. Review gate = reviewer approves the task. Never skip a gate to "save time" — a skipped gate is where the expensive bug hides.
+**Gate discipline:** each stage produces an artifact and only advances when its gate passes. Design gate = user/PO approves the spec. Write gate = plan self-review clean. Review gate = reviewer approves the task **and the `skeptic` returns PASS (or its block is fixed or ledger-recorded as an override)**. Plan gate and whole-branch gate are likewise skeptic-gated (§5.1). Never skip a gate to "save time" — a skipped gate is where the expensive bug hides.
 
 ---
 
@@ -94,12 +124,14 @@ This is where swarms leak resources if you're sloppy (we learned the hard way �
 
 **Kill** every agent when its work is done — actually stop it, don't just message "stand down." A "stand down" message leaves the process alive; it becomes a zombie that later auto-picks-up tasks and collides. At each lane's completion and at plan end, **stop the agent**. Periodically audit for zombies and kill any lane/reviewer no longer needed.
 
-**One persistent reviewer** is the exception worth keeping: reuse it across tasks by messaging it, so it accumulates review context — but still kill it at program end.
+**One persistent reviewer** is the one *optional* long-lived agent (the `skeptic` is the mandatory one) — reuse it across tasks by messaging it, so it accumulates review context; still kill it at program end.
+
+**The `skeptic` is mandatory, persistent, singular, and non-recursive.** It is spawned at branch time before any dispatch, regardless of task size — a one-line typo fix gets a skeptic too; there is no triage exception, because a rule with a discretionary crack gets widened under time pressure. Message it by name at each gate; never spawn a second one (a duplicate `skeptic` is the same bug as `api-lane-2`). Kill it at program end after its final pass clears. **Sub-controllers do not spawn sub-skeptics at any depth** — a recursing lane's sub-work is gated when the lane's *integrated* diff reaches the top-level skeptic, consistent with the rule that you gate a lane's rolled-up result rather than its leaf agents.
 
 Rules of thumb:
 - Confirmed workers are the ones that **produce commits and report** — address those names.
 - Before spawning, ask: does a lane of this role already exist and idle? If yes, message it.
-- After a phase: list agents, kill everything not needed for the next phase.
+- After a phase: list agents, kill every **lane/sub-lane** not needed for the next phase (never the `skeptic`).
 
 ### Recursive fan-out — a lane that becomes a sub-controller
 
@@ -107,7 +139,7 @@ A lane isn't limited to building solo. When you hand it a task that is itself **
 
 How to enable it (all of this goes in the lane's dispatch/brief):
 - **Say so explicitly** — a lane recurses only when told: *"You MAY spawn sub-agents via the Agent tool if your task decomposes into disjoint parallel pieces; you become their controller."*
-- **The lane inherits the full controller contract, one level down:** partition its own file boundary among sub-lanes (never two on the same file), own integration + the shared package index/lockfile, write sub-briefs as files, **verify every sub-diff**, adversarially review the risky ones, and **kill sub-lanes when done** (zombie audits apply at every level).
+- **The lane inherits the controller's *build* contract, one level down — but not the skeptic** (see §4: no sub-skeptics at any depth): partition its own file boundary among sub-lanes (never two on the same file), own integration + the shared package index/lockfile, write sub-briefs as files, **verify every sub-diff**, adversarially review the risky ones, and **kill sub-lanes when done** (zombie audits apply at every level).
 - **Depth cap 2 by default** (controller → lane → sub-lane); 3 only when a sub-task is itself clearly wide. **Never recurse down a dependency chain** — deep ≠ wide; that's coordination cost, not speed.
 - **Shared caps:** the concurrent-agent limit and token budget are shared across the whole tree. Prefer a few well-scoped sub-lanes to a swarm of tiny ones.
 - **The report rolls up:** the lane returns one integrated report (files, tests, sub-review verdicts). You gate the lane's result as a unit — you don't manage its leaf agents.
@@ -118,10 +150,11 @@ Rule of thumb: **recurse where the sub-graph is wide, build inline where it's sm
 
 ## 5. The review gates — why swarms stay correct
 
-Parallel speed is worthless if it ships bugs. Every task passes **two** checks, and neither is "tests are green":
+Parallel speed is worthless if it ships bugs. Every task passes **three** checks, and none of them is "tests are green":
 
 1. **Controller verification** — the controller reads the actual diff/files for the load-bearing property (the guard clause, the money math, the auth check). It never trusts a lane's "done" — a green suite + a confident report is an unverified claim until the diff confirms it.
 2. **Fresh reviewer** — a subagent that reads the diff **adversarially**: does it match the spec (nothing missing/extra), and is it secure/correct? For security-critical seams, prompt the reviewer to **attack the design** ("can a X do Y they shouldn't?"), and point it at the structural analog of any bug already found.
+3. **Skeptic** — the persistent doubter attacks the *claim*, not just the code. Is "done" supported by the diff and actual test output, or is it a confident report? Was the process followed (a red phase in `git log`, not merely green tests at the end)? It carries every earlier objection forward.
 
 Escalation:
 - **Per-task review** gates each task. Critical/Important findings → a focused fix dispatch → **re-review the fix** (don't trust the fix either).
@@ -129,6 +162,42 @@ Escalation:
 - **Verify every fix by reading it.** A fix report is a claim.
 
 > This layered review is the single highest-value habit. In practice it repeatedly catches authorization holes that tests + the author + the controller's own first read all passed — because tests prove *behavior*, but only an adversarial reader proves *who-can-do-what*.
+
+### 5.1 The skeptic gate
+
+The skeptic is consulted at exactly three points:
+
+1. **Plan gate** — before Wave 1 dispatch, when findings are cheapest to act on. It attacks the decomposition: files that are not actually disjoint, parallelism faked on a dependency chain, missing requirements, unstated failure modes.
+2. **Task gate** — after you verify the diff and the reviewer returns its verdict. It disputes the done-claim and audits skill compliance.
+3. **Whole-branch gate** — a final pass alongside the top-model review, carrying its accumulated memory of every earlier objection.
+
+**Evidence bar.** A `BLOCK` is valid only when it cites one of:
+
+- `file:line` plus why it is wrong;
+- a concrete failing input or repro;
+- a spec line X contradicted by code Y;
+- a missing artifact that should exist (no red-phase commit, no test output).
+
+Anything below that bar auto-downgrades to a **tracked Minor**: recorded in the ledger, non-gating. State this rule in the skeptic's dispatch so it self-filters, rather than you having to argue findings down. This bar is what makes hard-block authority safe — a skeptical persona plus blocking power, with no evidence requirement, deadlocks the swarm on vibes.
+
+**Verdict contract.** The skeptic writes to a report file:
+
+```
+VERDICT: PASS | BLOCK
+BLOCKS:  [severity] evidence → the claim it refutes
+MINORS:  unevidenced concerns (tracked, non-gating)
+```
+
+Severity uses the existing scale. **Any open BLOCK gates** — Critical and Important both stop the gate; severity only sets fix urgency. Minors never gate. You cannot bank a task or dispatch a wave while a block is open. Two exits:
+
+- **Fix** → focused fix dispatch → **the skeptic re-checks its own block**, not the reviewer. Persistence is the point; a fresh checker loses the context that produced the block.
+- **Override** → permitted, but it costs a ledger line. No silent bypass:
+
+  `OVERRIDE <gate>: <block> — reason: <why> — controller`
+
+  where `<gate>` is `T<n>` for a task gate, `PLAN` for the plan gate, `BRANCH` for the whole-branch gate. Example: `OVERRIDE T4: no red-phase commit — reason: single-line config change, no behavior — controller`
+
+Every override is listed to the human in the final report.
 
 Model selection for reviewers: scale to the diff's risk. Mechanical diff → cheap model. Subtle auth/concurrency change or the final whole-branch pass → top tier.
 
@@ -138,7 +207,7 @@ Model selection for reviewers: scale to the diff's risk. Mechanical diff → che
 
 Conversation memory does not survive compaction; a controller that loses its place can re-dispatch completed work (the most expensive failure). So **state lives in files**, not just context:
 
-- **Progress ledger** (`.superpowers/sdd/progress.md` or similar) — one line per task as its review clears: `Task N: complete (commits base..head, review clean)`, plus tracked Minors and cross-task notes. This is the recovery map: after compaction, trust the ledger + `git log` over memory.
+- **Progress ledger** (`.superpowers/sdd/progress.md` or similar) — one line per task as its review clears: `Task N: complete (commits base..head, review clean, skeptic PASS)`, plus tracked Minors and cross-task notes. This is the recovery map: after compaction, trust the ledger + `git log` over memory.
 - **Brief files + report files** — each task's requirements and each agent's report are files, referenced by path in dispatches. Bulk artifacts move as files, never pasted into prompts (pasted text re-enters context on every later turn).
 - **Git commits** — the ground truth. One commit per green task. The ledger names the commits; they exist even when context doesn't remember them.
 - **Specs / plans / design / roadmap** — every design decision, plan, and % -to-go-live is a committed doc. Nothing important is in the controller's head only.
@@ -178,12 +247,12 @@ Conversation memory does not survive compaction; a controller that loses its pla
 ## 8. Efficiency principles (the "super efficient by default")
 
 - **Context curation over context dumping.** Hand each agent a brief file + interfaces, not the transcript. The controller stays lean so it can coordinate a long program without drowning.
-- **Model tiering.** Transcription tasks (plan has the exact code) → cheapest model. Prose-spec implementation & integration → mid tier. Design, and the final whole-branch review → top tier. Always set the model explicitly; an omitted model silently inherits the most expensive one.
+- **Model tiering.** Transcription tasks (plan has the exact code) → cheapest model. Prose-spec implementation & integration → mid tier. Design, and the final whole-branch review → top tier; the persistent `skeptic` → mid tier, top tier for its final pass. Always set the model explicitly; an omitted model silently inherits the most expensive one.
 - **Turn-count beats token-price.** Cheapest models take 2–3× the turns on multi-step work; use mid-tier as the floor for reasoning tasks, cheapest only for transcription.
 - **Fan out only where the graph is wide.** Wasting agents on a dependency chain adds coordination cost, not speed.
 - **Pipeline, don't barrier.** When a later stage only needs one item's prior stage (not all), let items flow independently instead of waiting for the whole wave. (For deterministic orchestration of large fan-outs, a workflow script beats manual dispatch — loops, conditionals, fan-out in code.)
 - **Release the next task in parallel with a review** when they touch different files — momentum without collision; batch any review finding as a follow-up fix.
-- **Stop idle agents.** Every alive agent is latent cost and collision risk.
+- **Stop idle agents.** Every alive agent is latent cost and collision risk — **except the `skeptic` and any persistent reviewer, which are idle between gates by design and live until program end.**
 
 ---
 
@@ -193,6 +262,7 @@ Conversation memory does not survive compaction; a controller that loses its pla
 - **Never skip the review gate** on anything with an auth/money/data-integrity surface.
 - **Never run two agents in the same file/working-tree** concurrently.
 - **Never fake a human gate.** Sign-offs (spec approval, UAT, launch) are recorded when the human relays them, never self-approved.
+- **The skeptic is not optional and cannot be dismissed silently.** Every run spawns it; every open block is fixed or recorded as a controller override in the ledger. A gate passed without the skeptic's verdict is not a passed gate.
 - **Never lose the paper trail.** Ledger + git + committed specs/plans.
 - **Adversarial review for authorization.** Prompt reviewers to attack the design, not just check the happy path.
 - **Fail closed.** Guards deny on missing context; fixes prefer 4xx over silent success.
@@ -203,28 +273,30 @@ Conversation memory does not survive compaction; a controller that loses its pla
 
 ## 10. What the controller runs, end to end (checklist)
 
-1. **Triage** the input: one task vs feature vs BRD. Pick the lifecycle depth.
+1. **Triage** the input: one task vs feature vs BRD. Pick the lifecycle depth. **Small task** → single lane + reviewer; still branch and spawn the `skeptic` (step 3), then jump to step 5(b) — skipping only step 4 and the step-5(a) plan gate. **Every other step applies unchanged.**
 2. **(feature/BRD)** brainstorm → spec (design gate) → plan (write gate). Decompose a BRD into sub-projects first if it's too big for one spec.
-3. **Branch.** Record the base commit. Seed the ledger.
+3. **Branch.** Record the base commit. Seed the ledger. **Spawn the `skeptic`** — every run, no exceptions, even a single small task — with the evidence bar verbatim, its report-file path (`.superpowers/sdd/skeptic.md`), the verdict contract, and an explicit **mid-tier model** (top tier for the final pass).
 4. **Decompose** the plan into waves + lane assignments (disjoint files, dependency-sequenced).
-5. **Viewer:** detect the best available multiplexer (tmux → zellij → Windows Terminal → …); set up the 3-region panes; if none, run **headless** with ledger status. OS-agnostic — macOS/Linux/Windows all supported (see §7).
+5. **Plan gate + viewer:**
+   - **(a) Plan gate** (feature/BRD): the `skeptic` attacks the decomposition before dispatch; clear its blocks.
+   - **(b) Viewer:** detect the best available multiplexer (tmux → zellij → Windows Terminal → …); set up the 3-region panes; if none, run **headless** with ledger status. OS-agnostic — macOS/Linux/Windows all supported (see §7).
 6. **Dispatch Wave 1** lanes in parallel (named, brief-file-driven, cheap models for transcription).
-7. **Per task:** lane reports → controller verifies the diff → fresh reviewer → fix loop if needed → **bank in ledger + commit stands**.
+7. **Per task:** lane reports → controller verifies the diff → fresh reviewer → **`skeptic` disputes the done-claim** → fix loop if needed → **bank in ledger + commit stands**.
 8. **Sequence** cross-deps at gates; release parallel tasks where files are disjoint.
 9. **Kill** each lane at its completion; audit for zombies between phases.
-10. **Whole-branch review** (top model) → batch-fix findings → re-review.
-11. **Finish the branch** (merge/PR per the human's choice) → update the roadmap %.
-12. **Report** the outcome to the human in plain terms: what shipped, what's verified, what's tracked.
+10. **Whole-branch review** (top model) + **`skeptic` final pass** → batch-fix findings → re-review.
+11. **Finish the branch** (merge/PR per the human's choice) → update the roadmap % → **kill the `skeptic`** (program end).
+12. **Report** the outcome to the human in plain terms: what shipped, what's verified, what's tracked, **and every `OVERRIDE` line from the ledger — a skeptic block bypassed is a decision the human must see.**
 
 ---
 
 ## 11. Two worked examples
 
 **Single task — `/fan-out add a rate-limit to verify-otp`:**
-Triage → small. Controller spawns `api-lane` with a brief (the counter logic + a test), verifies the diff, one reviewer confirms the brute-force cap actually burns the code, banks it, kills the lane. Minutes, one gate.
+Triage → small. Controller still branches and **spawns the `skeptic`** first (no exceptions for size), then spawns `api-lane` with a brief (the counter logic + a test) — no wave decomposition, no plan gate. Lane reports; controller verifies the diff; one reviewer confirms the brute-force cap actually burns the code; the `skeptic` disputes the done-claim and clears it (the test output backs the claim). Controller banks it in the ledger and kills the lane. Whole-branch review + `skeptic` final pass on the single commit — clean. Finish the branch, **kill the `skeptic`**, report. Minutes, two gates — both cleared by reviewer and skeptic.
 
 **Program — `/fan-out build the org + tenancy backbone per the spec`:**
-Brainstorm the org model → spec (design gate) → plan of ~10 tasks (write gate) → branch. Wave 1: `api-lane` (db schema) ‖ `domain-lane` (role→capability map) ‖ `contracts-lane` (DTOs) — 3-wide, disjoint. Then the backend chain (org CRUD → scheme → tenant guard → capability guard → freeze → enrol), each gated. A dedicated security reviewer on the guard seam catches a self-escalation hole; fix + re-review. Whole-branch review (top model) catches an anonymous-route hole; fix + re-review. Kill lanes, finish branch, bump the roadmap. The result: a reviewed, tested, tenant-isolated backbone built with two lanes running in parallel through the wide part.
+Brainstorm the org model → spec (design gate) → plan of ~10 tasks (write gate) → branch + **spawn the `skeptic`**. Plan gate: the skeptic attacks the 3-wide Wave 1 decomposition and flags that `contracts-lane`'s DTOs are actually consumed in Wave 2 — resequenced before any dispatch. Wave 1: `api-lane` (db schema) ‖ `domain-lane` (role→capability map) ‖ `contracts-lane` (DTOs) — 3-wide, disjoint. Then the backend chain (org CRUD → scheme → tenant guard → capability guard → freeze → enrol), each gated by reviewer **and** skeptic. A dedicated security reviewer on the guard seam catches a self-escalation hole; fix + re-review. Whole-branch review (top model) **+ skeptic final pass** (it recalls the Wave 2 overstated done-claim) catches an anonymous-route hole; fix + re-review. Kill lanes, finish branch, **kill the `skeptic`**, bump the roadmap. The result: a reviewed, tested, tenant-isolated backbone built with two lanes running in parallel through the wide part.
 
 ---
 

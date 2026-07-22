@@ -81,7 +81,11 @@ Added to the invariant lists in both files:
 ### 6. Files changed
 
 - `skills/fan-out/SKILL.md` — role table row; spawn rule in the agent-lifecycle section; review-gate step updated to three checks; compact verdict contract; invariant line.
-- `skills/fan-out/reference/PLAYBOOK.md` — same content expanded: §1 role table, a new skeptic subsection under §5, §9 invariant, §10 checklist steps.
+- `skills/fan-out/reference/PLAYBOOK.md` — same content expanded: §0 invocation examples, §1 role table, §2 lifecycle diagram + prose + gate discipline, §4 agent lifecycle, a new §5.1 skeptic subsection, §9 invariant, §10 checklist steps, §11 worked examples.
+
+**Scoping rule for any future change to this contract — learned the hard way.** The first pass at this change edited only the *normative* passages (role tables, invariants, gate definitions) and left the *descriptive* ones alone. The whole-branch review found two Critical defects as a result: §11's program worked example and §0's invocation bullet both still described complete, self-consistent, skeptic-free workflows. A worked example is the highest-fidelity thing a model imitates, so a stale example silently overrides the rule it contradicts.
+
+So: when changing a rule that claims to be mandatory, grep for every place the old behavior is *described*, not just *specified* — examples, diagrams, invocation bullets, checklists, "rule of thumb" lines. A rule stated in three places and contradicted by an example in a fourth is not a mandatory rule.
 
 No new files. The skeptic's persona and prompt live inline in the dispatch text, matching how lanes and reviewers are already specified in this skill.
 
