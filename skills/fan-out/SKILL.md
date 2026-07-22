@@ -33,13 +33,14 @@ Your leverage is **curating context**: each agent gets a hand-built brief *file*
 ## The loop (run this)
 
 1. **Triage** the input: one small task vs feature vs BRD → pick lifecycle depth.
-   - **Small task** → single lane + reviewer (or do it yourself). Still do step 3 (branch + **spawn the `skeptic`**), then jump to step 5b — skipping only step 4 and the step-5a plan gate. **Every other step applies unchanged.**
+   - **Small task** → single lane + reviewer (or do it yourself). Still do step 3 (branch + **spawn the `skeptic`**), then jump to step 5(b) — skipping only step 4 and the step-5(a) plan gate. **Every other step applies unchanged.**
    - **Feature / BRD** → run the process chain first (step 2).
 2. **Process chain (feature/BRD only):** `superpowers:brainstorming` → spec (design gate: user/PO approves) → `superpowers:writing-plans` → plan (write gate: self-review clean). Decompose a too-big BRD into sub-projects first (independent pieces + build order), each through its own chain. Then `superpowers:subagent-driven-development` drives execution — /fan-out orchestrates these skills at swarm scale, it doesn't replace them.
 3. **Branch.** Record the base commit. Seed the ledger (`.superpowers/sdd/progress.md`). **Spawn the `skeptic`** — every run, no exceptions, even a one-line task — with the evidence bar verbatim, its report-file path (`.superpowers/sdd/skeptic.md`), the verdict contract (`VERDICT: PASS | BLOCK` / `BLOCKS: [severity] evidence → the claim it refutes` / `MINORS: unevidenced concerns (tracked, non-gating)`), and an explicit **mid-tier model** (top tier for the final pass).
 4. **Decompose into waves** (see below).
-5a. **Plan gate (feature/BRD):** send the wave decomposition to the `skeptic` before dispatching. It attacks non-disjoint files, faked parallelism on a dependency chain, missing requirements, unstated failure modes. Clear its blocks.
-5b. **Viewer:** detect best available multiplexer → set up panes; else headless (see below).
+5. **Plan gate + viewer:**
+   - **(a) Plan gate (feature/BRD):** send the wave decomposition to the `skeptic` before dispatching. It attacks non-disjoint files, faked parallelism on a dependency chain, missing requirements, unstated failure modes. Clear its blocks.
+   - **(b) Viewer:** detect best available multiplexer → set up panes; else headless (see below).
 6. **Dispatch a wave** of lanes in parallel — named, brief-file-driven, model-tiered. **Grant capable lanes permission to sub-fan-out** when their task is large and internally disjoint (see *Recursive fan-out*).
 7. **Per task gate:** lane reports → **you verify the actual diff** → fresh reviewer (adversarial) → **`skeptic` disputes the done-claim and audits skill compliance** → fix loop if Critical/Important → **bank in ledger + commit stands**.
 8. **Sequence** cross-deps at gates; release parallel tasks where files are disjoint.
@@ -130,10 +131,10 @@ Pane recipe (any multiplexer): one window, three regions, controller widest (~70
 ## Efficiency defaults
 
 - **Context curation over dumping** — brief file + interfaces, not the transcript. Keep your own context lean.
-- **Model tiering** — transcription (plan has exact code) → cheapest; prose-spec implementation + integration → mid; design + final whole-branch review → top. **Always set the model explicitly** (omitted = inherits most expensive).
+- **Model tiering** — transcription (plan has exact code) → cheapest; prose-spec implementation + integration → mid; design + final whole-branch review → top; the persistent `skeptic` → mid tier, top tier for its final pass. **Always set the model explicitly** (omitted = inherits most expensive).
 - **Turn-count beats token-price** — cheapest models take 2–3× the turns on multi-step work; mid-tier is the floor for reasoning tasks.
 - **Fan out only where the graph is wide.** **Pipeline, don't barrier** — let items flow when a later stage needs one item's prior stage, not the whole wave. For large deterministic fan-outs, a Workflow script beats manual dispatch.
-- **Release the next task in parallel with a review** when files differ. **Stop idle agents** — every alive agent is latent cost + collision risk.
+- **Release the next task in parallel with a review** when files differ. **Stop idle agents** — every alive agent is latent cost + collision risk — **except the `skeptic` and any persistent reviewer, which are idle between gates by design and live until program end.**
 
 ## Safety invariants (never traded for speed)
 
