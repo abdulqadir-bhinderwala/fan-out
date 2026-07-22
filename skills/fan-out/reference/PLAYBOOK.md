@@ -13,8 +13,8 @@
 ```
 
 - **`/fan-out add rate-limiting to the login endpoint`** — one small task. Controller branches, **spawns the `skeptic`** (every run, no exceptions), then does it directly or with 1 lane + 1 reviewer.
-- **`/fan-out build the reporting module per docs/specs/reporting.md`** — a feature. Controller plans it, fans out lanes by file-boundary, reviews each.
-- **`/fan-out ship the whole BRD at docs/BRD.docx`** — a program. Controller decomposes into sub-projects → each gets brainstorm → spec → plan → parallel build → review → finish.
+- **`/fan-out build the reporting module per docs/specs/reporting.md`** — a feature. Controller plans it, fans out lanes by file-boundary, gates each through reviewer + `skeptic`.
+- **`/fan-out ship the whole BRD at docs/BRD.docx`** — a program. Controller decomposes into sub-projects → each gets brainstorm → spec → plan → plan gate → parallel build → review + `skeptic` → finish.
 - **Optional setup** (natural language): `... with 3 backend lanes and a security reviewer`, `... no tmux`, `... cheapest models`, `... don't touch the payments module`, `... run to completion, don't check in`.
 
 **Default intelligence:** the controller decides lane count, model tiers, review depth, and tmux vs no-tmux from the task itself. You only pass setup when you want to override.
