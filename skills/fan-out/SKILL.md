@@ -24,7 +24,7 @@ Parse the argument into: (1) the **work** and (2) any **setup overrides** in nat
 | **Controller** | You (main session) | Decompose, spawn/steer lanes, gate reviews, integrate, keep ledger | Write feature code (stay free to coordinate) |
 | **Lane** | Spawned subagent, named by domain (`api-lane`, `ui-lane`, `spa-lane`, `infra-lane`, `domain-lane`) | Build one task in **its own files**, TDD, commit, self-review, report. If the task is large + disjoint, **sub-fan-out** its own worker sub-agents (see *Recursive fan-out*) | Touch another lane's files; approve itself |
 | **Reviewer** | Spawned subagent, fresh-per-task or persistent-reused | Read diff adversarially, verify spec + security, return verdict | Write code; rubber-stamp |
-| **Skeptic** | One persistent subagent named `skeptic`, spawned at program start, killed at program end | Attack the plan before dispatch, audit skill compliance, dispute every claim of done — blocking only on evidence | Write code; block without evidence; be spawned twice |
+| **Skeptic** | One persistent subagent named `skeptic`, spawned at branch time before any dispatch, killed at program end | Attack the plan before dispatch, audit skill compliance, dispute every claim of done — blocking only on evidence | Write code; block without evidence; be spawned twice |
 
 **Skeptic ≠ Reviewer.** The reviewer is fresh per task and reads one diff for correctness and security. The skeptic is **persistent and remembers** — it goes at *claims, process, and plan shape* across the whole program. That memory is why it can't be folded into the reviewer.
 
@@ -33,7 +33,7 @@ Your leverage is **curating context**: each agent gets a hand-built brief *file*
 ## The loop (run this)
 
 1. **Triage** the input: one small task vs feature vs BRD → pick lifecycle depth.
-   - **Small task** → single lane + reviewer (or do it yourself). Skip to step 5.
+   - **Small task** → single lane + reviewer (or do it yourself). Still do step 3 (branch + **spawn the `skeptic`**), then jump to step 6 — no wave decomposition, no plan gate. Steps 7 and 10 still apply.
    - **Feature / BRD** → run the process chain first (step 2).
 2. **Process chain (feature/BRD only):** `superpowers:brainstorming` → spec (design gate: user/PO approves) → `superpowers:writing-plans` → plan (write gate: self-review clean). Decompose a too-big BRD into sub-projects first (independent pieces + build order), each through its own chain. Then `superpowers:subagent-driven-development` drives execution — /fan-out orchestrates these skills at swarm scale, it doesn't replace them.
 3. **Branch.** Record the base commit. Seed the ledger (`.superpowers/sdd/progress.md`). **Spawn the `skeptic`** — every run, no exceptions, even a one-line task.
@@ -63,7 +63,7 @@ Your leverage is **curating context**: each agent gets a hand-built brief *file*
 - **Reuse** an idle existing lane by **messaging it by name** (SendMessage) with its next brief — do NOT spawn a duplicate. `api-lane-2` while `api-lane` lives = two agents in one tree = file races.
 - **Kill** every agent when its work is done — **actually stop it** (TaskStop), don't just message "stand down." A stand-down message leaves the process alive as a zombie that auto-picks-up tasks and collides. Kill at each lane's completion and at program end; periodically audit for zombies.
 - **One persistent reviewer** is the exception worth reusing across tasks (accumulates review context) — still kill it at program end.
-- **The `skeptic` is always persistent, never duplicated, never inherited.** One per run, spawned at branch time regardless of task size, messaged by name for every gate, killed at program end. **Sub-controllers do not spawn sub-skeptics** — a recursing lane's work is gated when its *integrated* diff reaches the top-level skeptic, as one unit.
+- **The `skeptic` is always persistent, never duplicated, never inherited.** One per run, spawned at branch time before any dispatch, regardless of task size, messaged by name for every gate, killed at program end. **Sub-controllers do not spawn sub-skeptics** — a recursing lane's work is gated when its *integrated* diff reaches the top-level skeptic, as one unit.
 
 ## Recursive fan-out — lanes may spawn their own sub-lanes
 
